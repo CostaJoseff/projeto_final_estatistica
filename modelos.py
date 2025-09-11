@@ -1,4 +1,6 @@
 import matplotlib.pyplot as plt
+from scipy.stats import t
+from math import sqrt
 
 class MRLS:
 
@@ -75,13 +77,26 @@ class MRLS:
 
         self.print_header = f"{self.x_label} -|- {self.y_label}"
 
-        #################################
-        ### Seção 2 ###############
-        ###  #######
-        #################################
+        ###################################
+        ########### Seção 2 ###############
+        ### IC e teste de hipoteses #######
+        ###################################
 
-        self.QMRes = self.SQRes / (self.n - 2)
-        self.var_b1 = self.QMRes / self.Sxx
+        self.QMRes = round(self.SQRes / (self.n - 2), decimal_precision)
+        self.var_b1 = round(self.QMRes / self.Sxx, decimal_precision)
+
+        alpha = 0.05
+        gl = self.n - 2
+        t_critico = t.ppf(1 - alpha/2, gl)
+        self.std_err = sqrt(self.var_b1)
+
+        self.IC_b1 = (
+            round(self.b1 - t_critico*self.std_err, decimal_precision), 
+            round(self.b1 + t_critico*self.std_err, decimal_precision)
+        )
+        
+        self.t = round(self.b1 / self.std_err, decimal_precision)
+        self.p = round((1 - t.cdf(abs(self.t), gl))*2, decimal_precision)
 
     def __call__(self, data):
         if isinstance(data, list):
@@ -126,6 +141,31 @@ class MRLS:
             rtrn += f"{xi} -|- {yi}\n"
         
         return rtrn
+
+    def complete_summary(self):
+        summary = f"Modelo de Regressão Linear Simples\n"
+        summary += f"{self.print_header}\n\n"
+        summary += f"y = b0 + b1*x\n"
+        summary += f"b0 = {self.b0}\n"
+        summary += f"b1 = {self.b1}\n\n"
+        summary += f"Sxy = {self.Sxy}\n"
+        summary += f"Sxx = {self.Sxx}\n"
+        summary += f"Syy = {self.Syy}\n"
+        summary += f"Correlação = {self.corr}\n\n"
+        summary += f"SQTot = {self.SQTot}\n"
+        summary += f"SQReg = {self.SQReg}\n"
+        summary += f"SQRes = {self.SQRes}\n\n"
+        summary += f"R2 = {self.R2}\n"
+        summary += f"Fração explicada: {self.fracao_explicada} -> {self.fracao_explicada*100:.2f}%\n"
+        summary += f"Fração não explicada: {self.fracao_nao_explicada} -> {self.fracao_nao_explicada*100:.2f}%\n\n"
+        summary += f"QMRes = {self.QMRes}\n"
+        summary += f"Var(b1) = {self.var_b1}\n"
+        summary += f"StdErr(b1) = {self.std_err}\n"
+        summary += f"IC_b1 = {self.IC_b1}\n"
+        summary += f"t = {self.t}\n"
+        summary += f"p-valor = {self.p}\n"
+
+        return summary
 
     def correlacao(self):
         from math import sqrt

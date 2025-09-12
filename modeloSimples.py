@@ -1,7 +1,8 @@
 from statsmodels.nonparametric.smoothers_lowess import lowess
-from scipy.stats import t, probplot
+from scipy.stats import t, probplot, f
 import matplotlib.pyplot as plt
 from math import sqrt
+import pandas as pd
 import numpy as np
 
 class MRLS:
@@ -48,7 +49,7 @@ class MRLS:
         # print(f"b0: {self.b0}")
 
         self.SQTot = round(sum([(yi-self.y_)**2 for yi in self.y]), self.decimal_precision)
-        self.SQRes = round(self.SQE(), self.decimal_precision)
+        self.SQRes = round(sum([(yi - self(xi))**2 for xi, yi in zip(self.x, self.y)]), self.decimal_precision)
         self.SQReg = round(sum([(self(xi) - self.y_)**2 for xi in self.x]), self.decimal_precision)
 
         # print(f"SQTot {self.SQTot}")
@@ -85,20 +86,38 @@ class MRLS:
         ###################################
 
         self.QMRes = round(self.SQRes / (self.n - 2), decimal_precision)
+        self.QMReg = round(self.SQReg, decimal_precision)
         self.var_b1 = round(self.QMRes / self.Sxx, decimal_precision)
+        self.var_b0 = round(self.QMRes*((1/self.n) + ((self.x_**2)/self.Sxx)),decimal_precision)
 
         alpha = 0.05
         gl = self.n - 2
         t_critico = t.ppf(1 - alpha/2, gl)
         self.std_err = sqrt(self.var_b1)
+        self.std_err_b0 = sqrt(self.var_b0)
+        self.std_err_resitual = sqrt(self.QMRes)
 
         self.IC_b1 = (
             round(self.b1 - t_critico*self.std_err, decimal_precision), 
             round(self.b1 + t_critico*self.std_err, decimal_precision)
         )
+
+        self.IC_b0 = (
+            round(self.b0 - t_critico*self.std_err_b0, decimal_precision), 
+            round(self.b0 + t_critico*self.std_err_b0, decimal_precision)
+        )
         
         self.t = round(self.b1 / self.std_err, decimal_precision)
         self.p = round((1 - t.cdf(abs(self.t), gl))*2, decimal_precision)
+
+        self.t_b0 = round(self.b0 / self.std_err_b0,decimal_precision)
+        self.p_b0 = round((1 - t.cdf(abs(self.t_b0), gl)) * 2, decimal_precision)
+
+        self.F_Star = round(self.QMReg / self.QMRes, decimal_precision)
+        self.F_critico = round(f.ppf(1 - alpha, 1, self.n - 2), decimal_precision)
+        self.p_f = round(1 - f.cdf(self.F_Star, 1, self.n - 2), decimal_precision)
+
+
 
     def __call__(self, data):
         if isinstance(data, list):
@@ -115,10 +134,6 @@ class MRLS:
                 raise AssertionError(f"O elemento do índice {i} não é do tipo int ou float. O tipo é {type(data[i])}")
             
         return [self(d) for d in data]
-    
-    def SQE(self):
-        sqe = sum([(yi - self(xi))**2 for xi, yi in zip(self.x, self.y)])
-        return sqe
     
     def scatter_plot(self, show_model=False):
         plt.figure()
@@ -188,7 +203,7 @@ class MRLS:
 
         return fig, (ax, ax2, ax3, ax4)
 
-    def complete_summary(self):
+    def sumario_completo(self):
         summary = f"Modelo de Regressão Linear Simples\n"
         summary += f"{self.print_header}\n\n"
         summary += f"y = b0 + b1*x\n"
@@ -210,10 +225,39 @@ class MRLS:
         summary += f"IC_b1 = {self.IC_b1}\n"
         summary += f"t = {self.t}\n"
         summary += f"p-valor = {self.p}\n"
+        summary += f"F* = {self.F_Star}\n"
+        summary += f"F critico = {self.F_critico}\n"
 
-        return summary
+        print(summary)
 
     def correlacao(self):
-        from math import sqrt
-
         return round(self.Sxy / (sqrt(self.Sxx)*sqrt(self.Syy)), self.decimal_precision)
+    
+    def sumario_estatistico(self):
+        dados = {
+            "Coeficiente": ["β0 (Interceptor)", f"β1 {self.x_label}"],
+            "Estimativa": [self.b0, self.b1],
+            "Erro padrão": [self.std_err_b0, self.std_err],
+            "T": [self.t_b0, self.t],
+            "p-valor": [self.p_b0, self.p]
+        }
+
+        print(pd.DataFrame(dados).to_string(index=False))
+
+        print("\n")
+        print(f"Erro padrão residual: {self.std_err_resitual} com gl={self.n-2}")
+        print(f"R2: {self.R2} -> Adequação de {self.R2*100:.2f}%")
+        print(f"F: {self.F_Star} com gl = 1 e {self.n-2} || p-valor: {self.p_f}")
+
+        print("\n")
+
+        anova = {
+            " ": [self.x_label, "Residos"],
+            "GL": [1, self.n-2],
+            "SQ": [self.SQReg, self.SQRes],
+            "QM": [self.SQReg, self.QMRes],
+            "F": [self.F_Star, " "],
+            "p-valor": [self.p_f, " "]
+        }
+        
+        print(pd.DataFrame(anova).to_string(index=False))

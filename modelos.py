@@ -1,6 +1,8 @@
+from statsmodels.nonparametric.smoothers_lowess import lowess
+from scipy.stats import t, probplot
 import matplotlib.pyplot as plt
-from scipy.stats import t
 from math import sqrt
+import numpy as np
 
 class MRLS:
 
@@ -26,32 +28,32 @@ class MRLS:
         self.x_ = round(sum(x) / self.n, self.decimal_precision)
         self.y_ = round(sum(y) / self.n, self.decimal_precision)
 
-        print(f"X_: {self.x_}")
-        print(f"Y_: {self.y_}")
+        # print(f"X_: {self.x_}")
+        # print(f"Y_: {self.y_}")
 
         self.Sxy = round(sum([xi*yi for xi, yi in zip(self.x, self.y)]) - (self.n*self.x_*self.y_), self.decimal_precision)
         self.Sxx = round(sum([xi**2 for xi in self.x]) - (self.n*(self.x_**2)), self.decimal_precision)
         self.Syy = round(sum([yi**2 for yi in self.y]) - (self.n*(self.y_**2)), self.decimal_precision)
 
-        print(f"Sxy: {self.Sxy}")
-        print(f"Sxx: {self.Sxx}")
-        print(f"Syy: {self.Syy}")
+        # print(f"Sxy: {self.Sxy}")
+        # print(f"Sxx: {self.Sxx}")
+        # print(f"Syy: {self.Syy}")
 
         self.corr = self.correlacao()
 
         self.b1 = round(self.Sxy / self.Sxx, self.decimal_precision)
         self.b0 = round(self.y_ - self.b1*self.x_, self.decimal_precision)
 
-        print(f"b1: {self.b1}")
-        print(f"b0: {self.b0}")
+        # print(f"b1: {self.b1}")
+        # print(f"b0: {self.b0}")
 
         self.SQTot = round(sum([(yi-self.y_)**2 for yi in self.y]), self.decimal_precision)
         self.SQRes = round(self.SQE(), self.decimal_precision)
         self.SQReg = round(sum([(self(xi) - self.y_)**2 for xi in self.x]), self.decimal_precision)
 
-        print(f"SQTot {self.SQTot}")
-        print(f"SQReg {self.SQReg}")
-        print(f"SQRes {self.SQRes}")
+        # print(f"SQTot {self.SQTot}")
+        # print(f"SQReg {self.SQReg}")
+        # print(f"SQRes {self.SQRes}")
         # print("\n" + str(self.SQRes + self.SQReg))
 
         # assert self.SQTot == (self.SQRes + self.SQReg)
@@ -69,7 +71,7 @@ class MRLS:
         # assert R2_1 <= 1 and R2_1 >= 0
         # self.R2 = R2_1
 
-        print(f"R2: {self.R2}")
+        # print(f"R2: {self.R2}")
 
         self.fracao_explicada = self.R2
         self.fracao_nao_explicada = 1 - self.R2
@@ -141,6 +143,50 @@ class MRLS:
             rtrn += f"{xi} -|- {yi}\n"
         
         return rtrn
+
+    def residual_plot(self):
+        fitted = self.__batch_call__(self.x)
+        residuals = [yi - fi for yi, fi in zip(self.y, fitted)]
+
+        fig, (ax, ax2, ax3, ax4) = plt.subplots(ncols=4, figsize=(25, 5))
+
+        # ---------- 1. Residuals vs Fitted ----------
+        ax.scatter(fitted, residuals)
+        smooth = lowess(residuals, fitted)
+        ax.plot(smooth[:,0], smooth[:,1], color='red', linestyle='--', linewidth=1)
+        ax.set_xlabel('Valores Ajustados (Ŷ)')
+        ax.set_ylabel('Resíduos (e)')
+        ax.set_title('Gráfico de Resíduos vs Valores Ajustados')
+
+        # ---------- 2. Q-Q Plot ----------
+        residuals_std = (residuals - np.mean(residuals)) / np.std(residuals, ddof=1)
+        (osm, osr), (slope, intercept, r) = probplot(residuals_std, dist="norm")
+        ax2.scatter(osm, osr)
+        ax2.plot(osm, slope*osm + intercept, color='red', linestyle='--')
+        ax2.set_xlabel('Quantis Teóricos')
+        ax2.set_ylabel('Residuais Padronizados')
+        ax2.set_title('Q-Q Plot dos Resíduos Padronizados')
+
+        # ---------- 3. Scale-Location Plot ----------
+        y_vals = np.sqrt(np.abs(residuals_std))
+        ax3.scatter(fitted, y_vals)
+        smooth2 = lowess(y_vals, fitted)
+        ax3.plot(smooth2[:,0], smooth2[:,1], color='red', linestyle='--')
+        ax3.set_xlabel('Valores Ajustados (Ŷ)')
+        ax3.set_ylabel('Raiz Quadrada dos Resíduos Padronizados')
+        ax3.set_title('Homocedasticidade dos Resíduos')
+
+        # ---------- 4. Residuals vs Leverage ----------
+        x_array = np.array(self.x)
+        h = 1/self.n + ((x_array - self.x_)**2) / self.Sxx
+        ax4.scatter(h, residuals_std)
+        smooth3 = lowess(residuals_std, h)
+        ax4.plot(smooth3[:,0], smooth3[:,1], color='red', linestyle='--')
+        ax4.set_xlabel('Alavancagem (h)')
+        ax4.set_ylabel('Resíduos Padronizados')
+        ax4.set_title('Resíduos Padronizados vs Alavancagem')
+
+        return fig, (ax, ax2, ax3, ax4)
 
     def complete_summary(self):
         summary = f"Modelo de Regressão Linear Simples\n"

@@ -1,7 +1,8 @@
 from statsmodels.nonparametric.smoothers_lowess import lowess
+from IPython.display import display, HTML
 from scipy.stats import t, probplot, f
 import matplotlib.pyplot as plt
-from math import sqrt
+from math import sqrt, isnan
 import pandas as pd
 import numpy as np
 
@@ -11,6 +12,9 @@ class MRLS:
         if len(x) != len(y):
             raise AssertionError(f"X não possui a mesma quantidade de valores que Y: X:{len(x)} -- Y:{len(y)}")
 
+        xy = [(xi, yi) for xi, yi in zip(x, y) if not (isnan(xi) or isnan(yi))]
+        x, y = zip(*xy)
+        x, y = list(x), list(y)
 
         #################################
         ### Seção inicial ###############
@@ -152,12 +156,37 @@ class MRLS:
     def __str__(self):
         return f"b0: {self.b0} -|- b1:{self.b1}"
 
-    def table(self):
-        rtrn = self.print_header + "\n"
-        for xi, yi in zip(self.x, self.y):
-            rtrn += f"{xi} -|- {yi}\n"
+    def tabela_de_valores(self):
+        data = {
+            self.x_label: self.x,
+            self.y_label: self.y,
+        }
         
-        return rtrn
+        self.html_display(data)
+
+    def html_display(self, data):
+        if not (isinstance(data, pd.DataFrame) or isinstance(data, dict)):
+            raise AssertionError(f"O input deve ser um DataFrame ou um dicionário. O tipo do input é {type(data)}")
+
+        if isinstance(data, dict):
+            data = pd.DataFrame(data)
+
+        display(
+            HTML(
+                data
+                .head(10)
+                .to_html(border=1, index=False, justify="center")
+            )
+        )
+
+    def tabela_de_valores_reais_e_preditos(self):
+        data = {
+            self.x_label: self.x,
+            self.y_label: self.y,
+            "y predito": self.__batch_call__(self.x)
+        }
+        
+        self.html_display(data)
 
     def residual_plot(self):
         fitted = self.__batch_call__(self.x)
@@ -242,7 +271,7 @@ class MRLS:
             "p-valor": [self.p_b0, self.p]
         }
 
-        print(pd.DataFrame(dados).to_string(index=False))
+        self.html_display(pd.DataFrame(dados))
 
         print("\n")
         print(f"Erro padrão residual: {self.std_err_resitual} com gl={self.n-2}")
@@ -260,4 +289,4 @@ class MRLS:
             "p-valor": [self.p_f, " "]
         }
         
-        print(pd.DataFrame(anova).to_string(index=False))
+        self.html_display(pd.DataFrame(anova))

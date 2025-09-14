@@ -1,3 +1,165 @@
+from IPython.display import display, HTML
+import matplotlib.pyplot as plt
+from modeloSimples import MRLS
+import statsmodels.api as sm
+import math, itertools
+import pandas as pd
+from pprint import pprint
+import numpy as np
+
 class MRLM:
 
+    def __init__(self, X, y, X_labels=[], y_label="y"):
+        if X.shape[0] != y.shape[0]:
+            raise AssertionError(f"O número de linhas de X e y devem ser iguais: X: {X.shape[0]} | y: {y.shape[0]}")
+
+        df_comb = pd.concat([X, y], axis=1)
+        df_clean = df_comb.dropna()
+
+
+        self.y_label = y_label
+        self.X_labels = X_labels
+
+        self.X = df_clean.iloc[:, :-1]
+        self.y = df_clean.iloc[:, -1]
+        self.n = len(y)
+        self.k = X.shape[1]  # número de preditores
+        self.observacoes_deletadas = y.shape[0] - self.y.shape[0]
+
+        # Ajusta o modelo de regressão linear múltipla
+        self.modelo: sm.OLS = sm.OLS(self.y, sm.add_constant(self.X)).fit()
+
+        # Coeficientes do modelo
+        self.coeficientes = self.modelo.params
+
+        # Estatísticas do modelo
+        self.R2 = self.modelo.rsquared
+        self.R2_ajustado = self.modelo.rsquared_adj
+        self.erro_padrao_residual = np.sqrt(self.modelo.mse_resid)
+        self.F = self.modelo.fvalue
+        self.p_F = self.modelo.f_pvalue
+        self.gl = self.modelo.df_model
+        self.glr = self.modelo.df_resid
+
+        # Estatísticas dos coeficientes
+        self.std_err = self.modelo.bse
+        self.t_values = self.modelo.tvalues
+        self.p_values = self.modelo.pvalues
+        self.aic = self.modelo.aic
+        self.bic = self.modelo.bic
+
+    def html_display(self, data):
+        if not (isinstance(data, pd.DataFrame) or isinstance(data, dict)):
+            raise AssertionError(f"O input deve ser um DataFrame ou um dicionário. O tipo do input é {type(data)}")
+
+        if isinstance(data, dict):
+            data = pd.DataFrame(data)
+
+        display(
+            HTML(
+                data
+                .head(10)
+                .to_html(border=1, index=False, justify="center")
+            )
+        )
+
+    def sumario_sm(self):
+        print(self.modelo.summary())
+
+    def plot_correlacao_em_pares(self, tamanho_do_plot=4, show_model=False):
+        plot_elements = self.X_labels + [self.y_label]
+        data = pd.concat([self.X, self.y], axis=1)
+
+        # Cria todas as combinações únicas de pares (sem repetição)
+        combinacoes = list(itertools.combinations(plot_elements, 2))
+        matriz_combinacoes = []
+        anterior = combinacoes[0][0]
+        linha = []
+        for a, b in combinacoes:
+            if a != anterior:
+                anterior = a
+                if len(linha) < len(plot_elements)-1:
+                    linha = linha + ([None]*(len(plot_elements)-len(linha)-1))
+
+                matriz_combinacoes.append(linha)
+                linha = []
+            
+            linha.append((a, b))
+        linha = linha + [None]*(len(plot_elements)-1-len(linha))
+        matriz_combinacoes.append(linha)
+        # Encontra o melhor layout (linhas, colunas)
+        linhas = len(plot_elements)-1
+        colunas = linhas
+
+        # Cria os subplots
+        fig, axes = plt.subplots(nrows=linhas, ncols=colunas, figsize=(colunas*tamanho_do_plot, linhas*tamanho_do_plot))
+
+        # Garante que axes seja 2D
+        axes = np.array(axes)
+        if linhas == 1:
+            axes = axes.reshape(1, -1)
+        elif colunas == 1:
+            axes = axes.reshape(-1, 1)
+
+        # axes = axes.flatten()  # Agora é 1D para iteração simples
+
+        # Plota os pares
+        for i_idx in range(len(matriz_combinacoes)):
+            for j_idx in range(len(matriz_combinacoes[i_idx])):
+                if matriz_combinacoes[i_idx][j_idx] is None:
+                    idx = (i_idx, j_idx)
+                    axes[idx].axis('off')
+                    continue
+                
+                x_label, y_label = matriz_combinacoes[i_idx][j_idx]
+                idx = (i_idx, j_idx)
+                ax = axes[idx]
+                x_data = data[x_label].tolist()
+                y_data = data[y_label].tolist()
+                ax.scatter(x_data, y_data)
+                if show_model:
+                    x_min = min(x_data)
+                    x_max = max(x_data)
+
+                    simple_model = MRLS(x_data, y_data)
+
+                    ax.plot([x_min, x_max], [simple_model(x_min), simple_model(x_max)], color='g', linewidth=4)
+
+                ax.set_title(f"{x_label} vs {y_label}")
+                ax.set_xlabel(x_label)
+                ax.set_ylabel(y_label)
+
+        # Esconde plots extras (caso existam)
+        # for idx in range(len(combinacoes), len(axes)):
+        #     axes[idx].set_visible(False)
+
+        plt.tight_layout()
+        plt.show()
+
     
+    def reshape_lista(self, lista, linhas, colunas):
+        matriz = []
+        for i in range(linhas):
+            inicio = i * colunas
+            fim = inicio + colunas
+            linha = lista[inicio:fim]
+            if linha:
+                matriz.append(linha)
+        return matriz
+    
+    def sumario_em_pares(self):
+        data = {
+            "Coeficiente": [self.y_label + " (Intercept)"] + self.X_labels,
+            "Estimativa": self.coeficientes.values,
+            "Erro padrão": self.std_err.values,
+            "T": self.t_values.values,
+            "p-valor": [round(p, 3) for p in self.p_values.values]
+        }
+
+        self.html_display(data)
+
+        print("\n")
+        print(f"Erro padrão residual: {self.erro_padrao_residual} com gl={self.glr}\n")
+        print(f"R2: {self.R2} -|- R2-ajustado: {self.R2_ajustado}")
+        print(f"F: {self.F} com gl = {len(self.X_labels)} e {self.glr}")
+        print(f"({self.observacoes_deletadas} observações deletadas por NAN)")

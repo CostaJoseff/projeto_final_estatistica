@@ -6,6 +6,8 @@ import math, itertools
 import pandas as pd
 from pprint import pprint
 import numpy as np
+from statsmodels.nonparametric.smoothers_lowess import lowess
+from scipy.stats import probplot
 
 class MRLM:
 
@@ -163,3 +165,60 @@ class MRLM:
         print(f"R2: {self.R2} -|- R2-ajustado: {self.R2_ajustado}")
         print(f"F: {self.F} com gl = {len(self.X_labels)} e {self.glr}")
         print(f"({self.observacoes_deletadas} observações deletadas por NAN)")
+
+    def residual_plots(self):
+        fitted = self.modelo.fittedvalues
+        residuals = self.modelo.resid
+        residuals_std = (residuals - np.mean(residuals)) / np.std(residuals, ddof=1)
+
+        influence = self.modelo.get_influence()
+        leverage = influence.hat_matrix_diag  # alavancagem
+
+        fig, (ax1, ax2, ax3, ax4) = plt.subplots(ncols=4, figsize=(25, 5))
+
+        # ---------- 1. Resíduos vs Ajustados ----------
+        ax1.scatter(fitted, residuals)
+        smooth = lowess(residuals, fitted)
+        ax1.plot(smooth[:,0], smooth[:,1], color='red', linestyle='--')
+        ax1.axhline(0, color='gray', linestyle='--')
+        ax1.set_xlabel('Valores Ajustados (Ŷ)')
+        ax1.set_ylabel('Resíduos')
+        ax1.set_title('Resíduos vs Valores Ajustados')
+
+        # ---------- 2. Q-Q Plot ----------
+        (osm, osr), (slope, intercept, r) = probplot(residuals_std, dist="norm")
+        ax2.scatter(osm, osr)
+        ax2.plot(osm, slope*osm + intercept, color='red', linestyle='--')
+        ax2.set_xlabel('Quantis Teóricos')
+        ax2.set_ylabel('Resíduos Padronizados')
+        ax2.set_title('Q-Q Plot')
+
+        # ---------- 3. Scale-Location ----------
+        y_vals = np.sqrt(np.abs(residuals_std))
+        ax3.scatter(fitted, y_vals)
+        smooth2 = lowess(y_vals, fitted)
+        ax3.plot(smooth2[:,0], smooth2[:,1], color='red', linestyle='--')
+        ax3.set_xlabel('Valores Ajustados (Ŷ)')
+        ax3.set_ylabel('√|Resíduos Padronizados|')
+        ax3.set_title('Homocedasticidade dos Resíduos')
+
+        # ---------- 4. Resíduos vs Leverage ----------
+        ax4.scatter(leverage, residuals_std)
+        smooth3 = lowess(residuals_std, leverage)
+        ax4.plot(smooth3[:,0], smooth3[:,1], color='red', linestyle='--')
+        ax4.set_xlabel('Alavancagem (h)')
+        ax4.set_ylabel('Resíduos Padronizados')
+        ax4.set_title('Resíduos vs Alavancagem')
+
+        plt.tight_layout()
+        plt.show()
+
+        return fig, (ax1, ax2, ax3, ax4)
+# Supondo que você já tenha X (preditoras) e y (resposta)
+modelo = MRLM(X, y, X_labels=X.columns.tolist(), y_label="Taxa de Ocupação")
+
+# Resumo do modelo
+modelo.sumario_sm()
+
+# Gráficos de resíduos
+modelo.residual_plots()

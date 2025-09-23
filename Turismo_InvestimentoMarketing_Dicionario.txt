@@ -1,0 +1,13 @@
+ DICIONÁRIO DE DADOS — Turismo_InvestimentoMarketing
+ --------------------------------------------------
+ Investimento_marketing      : Recursos financeiros investidos em campanhas de marketing para promover destinos turísticos (variável resposta). [Unidade: R$ mil]
+ alcance_midias              : Público alcançado pelas campanhas em mídias (escala de milhares de pessoas). [Unidade: mil pessoas]
+ cliques                     : Quantidade de cliques em anúncios (escala de milhares). Pode conter poucos valores negativos intencionais como outliers absurdos. [Unidade: mil cliques]
+ taxa_conversao              : Proporção de usuários que realizaram a ação alvo (compra/lead) após exposição. [Unidade: %]
+ taxa_ocupacao_hoteleira     : Taxa média de ocupação de hotéis no período da campanha. [Unidade: %]
+ estacao                     : Sazonalidade do período: Baixa (ref.), Media, Alta. [Unidade: categoria]
+ tipo_destino                : Perfil do destino: Urbano (ref.), Praia, Campo, Cultural. [Unidade: categoria]
+ orcamento_publico           : Índice (0–100) da disponibilidade orçamentária pública local para ações turísticas. [Unidade: índice (0–100)]
+ preco_medio_pacote          : Preço médio de pacotes ofertados no período (em milhares de reais). [Unidade: R$ mil]
+ reputacao_online            : Avaliação média (0–5) de reputação do destino em plataformas online. [Unidade: nota (0–5)]
+ eventos_anuais              : Número de eventos relevantes (feiras, festivais, congressos) no ano. [Unidade: contagem]

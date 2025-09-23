@@ -1,3 +1,4 @@
+from typing_extensions import Literal
 from statsmodels.nonparametric.smoothers_lowess import lowess
 from IPython.display import display, HTML
 from scipy.stats import probplot
@@ -11,7 +12,7 @@ import numpy as np
 
 class MRLM:
 
-    def __init__(self, X, y, X_labels=[], y_label="y"):
+    def __init__(self, X, y, X_labels=[], y_label="y", dummies=[]):
         if X.shape[0] != y.shape[0]:
             raise AssertionError(f"O número de linhas de X e y devem ser iguais: X: {X.shape[0]} | y: {y.shape[0]}")
 
@@ -24,6 +25,8 @@ class MRLM:
 
         self.y_label = y_label
         self.X_labels = X_labels
+
+        self.dummies = dummies
 
         self.X = df_clean.iloc[:, :-1]
         self.y = df_clean.iloc[:, -1]
@@ -216,7 +219,21 @@ class MRLM:
         plt.tight_layout()
         plt.show()
 
-    def selecionar_melhor_combinacao_de_variaveis(self, print_relatorio=False):
+    def selecionar_melhor_combinacao_de_variaveis(self, print_relatorio=False, criterio: Literal["AIC", "BIC", "R2", "R2_aj"]="AIC"):
+        if criterio.upper() not in ["AIC", "BIC", "R2", "R2_AJ"]:
+            raise AssertionError("Critério deve ser AIC, BIC, R2 ou R2_aj")
+    
+        AIC, BIC, R2, R2_aj = [False] * 4
+        match criterio:
+            case "AIC":
+                AIC = True
+            case "BIC":
+                BIC = True
+            case "R2":
+                R2 = True
+            case "R2_aj":
+                R2_aj = True
+
         def update_vars_(vars_, novo_modelo: MRLM):
             vars_["melhor_atual"] = "--".join(novo_modelo.X_labels)
             vars_["melhor"] = novo_modelo
@@ -230,9 +247,27 @@ class MRLM:
 
             return vars_
 
+        dummies_find = []
+        for dum in self.dummies:
+            sub_list = [i for i in self.X_labels if dum in i]
+            dummies_find.append(sub_list)
+
         todas_combinacoes = []
         for tamanho in range(1, len(self.X_labels)+1):
-            todas_combinacoes.extend(itertools.combinations(self.X_labels, tamanho))
+            combinacao_atual = list(itertools.combinations(self.X_labels, tamanho))
+
+            for ca in combinacao_atual:
+                passou = True
+                for dum in dummies_find:
+                    todos = all(i in ca for i in dum)
+                    nenhum = all(i not in ca for i in dum)
+
+                    if not(todos or nenhum):
+                        passou = False
+                        break
+
+                if passou:
+                    todas_combinacoes.append(ca)
         
         melhor = None
         melhor_AIC = float("inf")
@@ -254,18 +289,24 @@ class MRLM:
             "melhor_p": melhor_p
         }
 
-
-        for combinacao in todas_combinacoes:
+        criterio_str = criterio
+        tot_combinacoes = len(todas_combinacoes)
+        for i, combinacao in enumerate(todas_combinacoes):
+            if i % 300 == 0:
+                print(f"\r{i} / {tot_combinacoes} considerando {criterio_str}", end="     ")
             X = self.original_X[list(combinacao)]
             novo_modelo = MRLM(X, self.original_y, X.columns.to_list(), self.original_y.name)
 
             bom_AIC = vars_["melhor_AIC"] > novo_modelo.aic
             bom_BIC = vars_["melhor_BIC"] > novo_modelo.bic
-            # bom_R2_ajust = vars_["melhor_R2_ajus"] < novo_modelo.R2_ajustado
+            bom_R2 = vars_["melhor_R2"] < novo_modelo.R2
+            bom_R2_ajust = vars_["melhor_R2_ajus"] < novo_modelo.R2_ajustado
+            criterio = bom_AIC if AIC else bom_BIC if BIC else bom_R2 if R2 else bom_R2_ajust
 
-            if bom_AIC or bom_BIC:
+            if criterio:
                 vars_ = update_vars_(vars_, novo_modelo)
 
+        print(f"\r{i} / {tot_combinacoes} considerando {criterio_str}")
         if print_relatorio:
             pprint(vars_)
 
@@ -273,7 +314,7 @@ class MRLM:
             for novo_modelo in vars_["melhores"]:
                 relat = "*"*20+"\n\n"
                 relat += "Modelo\n"
-                relat += f"{" - ".join(X.columns.to_list())}\n"
+                relat += f"{' - '.join(novo_modelo.X_labels)}\n"
                 relat += f"AIC: {novo_modelo.aic} -- BIC: {novo_modelo.bic}\n"
                 relat += f"R2: {novo_modelo.R2} -- R2_ajus: {novo_modelo.R2_ajustado}\n"
                 relat += f"F: {novo_modelo.F} -- p-valor: {novo_modelo.p_F}\n"

@@ -230,7 +230,8 @@ class MRLS:
         ax4.set_ylabel('Resíduos Padronizados')
         ax4.set_title('Resíduos Padronizados vs Alavancagem')
 
-        return fig, (ax, ax2, ax3, ax4)
+        fig, (ax, ax2, ax3, ax4)
+        fig.show()
 
     def sumario_completo(self):
         summary = f"Modelo de Regressão Linear Simples\n"

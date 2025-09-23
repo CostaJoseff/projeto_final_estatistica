@@ -1,19 +1,22 @@
+from statsmodels.nonparametric.smoothers_lowess import lowess
 from IPython.display import display, HTML
+from scipy.stats import probplot
 import matplotlib.pyplot as plt
 from modeloSimples import MRLS
 import statsmodels.api as sm
 import math, itertools
-import pandas as pd
 from pprint import pprint
+import pandas as pd
 import numpy as np
-from statsmodels.nonparametric.smoothers_lowess import lowess
-from scipy.stats import probplot
 
 class MRLM:
 
     def __init__(self, X, y, X_labels=[], y_label="y"):
         if X.shape[0] != y.shape[0]:
             raise AssertionError(f"O número de linhas de X e y devem ser iguais: X: {X.shape[0]} | y: {y.shape[0]}")
+
+        self.original_X = X
+        self.original_y = y
 
         df_comb = pd.concat([X, y], axis=1)
         df_clean = df_comb.dropna()
@@ -213,12 +216,68 @@ class MRLM:
         plt.tight_layout()
         plt.show()
 
-        return fig, (ax1, ax2, ax3, ax4)
-# Supondo que você já tenha X (preditoras) e y (resposta)
-modelo = MRLM(X, y, X_labels=X.columns.tolist(), y_label="Taxa de Ocupação")
+    def selecionar_melhor_combinacao_de_variaveis(self, print_relatorio=False):
+        def update_vars_(vars_, novo_modelo: MRLM):
+            vars_["melhor_atual"] = "--".join(novo_modelo.X_labels)
+            vars_["melhor"] = novo_modelo
+            vars_["melhores"].append(novo_modelo)
+            vars_["melhor_AIC"] = novo_modelo.aic
+            vars_["melhor_BIC"] = novo_modelo.bic
+            vars_["melhor_R2"] = novo_modelo.R2
+            vars_["melhor_R2_ajus"] = novo_modelo.R2_ajustado
+            vars_["melhor_F"] = novo_modelo.F
+            vars_["melhor_p"] = novo_modelo.p_F
 
-# Resumo do modelo
-modelo.sumario_sm()
+            return vars_
 
-# Gráficos de resíduos
-modelo.residual_plots()
+        todas_combinacoes = []
+        for tamanho in range(1, len(self.X_labels)+1):
+            todas_combinacoes.extend(itertools.combinations(self.X_labels, tamanho))
+        
+        melhor = None
+        melhor_AIC = float("inf")
+        melhor_BIC = float("inf")
+        melhor_R2 = 0
+        melhor_R2_ajus = 0
+        melhor_F = 0
+        melhor_p = 2
+
+        vars_ = {
+            "melhor_atual": "",
+            "melhor": melhor,
+            "melhores": [],
+            "melhor_AIC": melhor_AIC,
+            "melhor_BIC": melhor_BIC,
+            "melhor_R2": melhor_R2,
+            "melhor_R2_ajus": melhor_R2_ajus,
+            "melhor_F": melhor_F,
+            "melhor_p": melhor_p
+        }
+
+
+        for combinacao in todas_combinacoes:
+            X = self.original_X[list(combinacao)]
+            novo_modelo = MRLM(X, self.original_y, X.columns.to_list(), self.original_y.name)
+
+            bom_AIC = vars_["melhor_AIC"] > novo_modelo.aic
+            bom_BIC = vars_["melhor_BIC"] > novo_modelo.bic
+            # bom_R2_ajust = vars_["melhor_R2_ajus"] < novo_modelo.R2_ajustado
+
+            if bom_AIC or bom_BIC:
+                vars_ = update_vars_(vars_, novo_modelo)
+
+        if print_relatorio:
+            pprint(vars_)
+
+            print()
+            for novo_modelo in vars_["melhores"]:
+                relat = "*"*20+"\n\n"
+                relat += "Modelo\n"
+                relat += f"{" - ".join(X.columns.to_list())}\n"
+                relat += f"AIC: {novo_modelo.aic} -- BIC: {novo_modelo.bic}\n"
+                relat += f"R2: {novo_modelo.R2} -- R2_ajus: {novo_modelo.R2_ajustado}\n"
+                relat += f"F: {novo_modelo.F} -- p-valor: {novo_modelo.p_F}\n"
+                relat += "*"*20+"\n\n"
+                print(relat)
+
+        return vars_["melhor"]

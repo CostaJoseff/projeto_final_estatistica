@@ -1,12 +1,12 @@
 from typing_extensions import Literal
 from statsmodels.nonparametric.smoothers_lowess import lowess
 from IPython.display import display, HTML
-from scipy.stats import probplot
+from scipy.stats import probplot, zscore
 import matplotlib.pyplot as plt
 from modeloSimples import MRLS
 import statsmodels.api as sm
-import math, itertools
 from pprint import pprint
+import math, itertools
 import pandas as pd
 import numpy as np
 
@@ -20,7 +20,11 @@ class MRLM:
         self.original_y = y
 
         df_comb = pd.concat([X, y], axis=1)
-        df_clean = df_comb.dropna()
+        df_clean = df_comb.dropna() # Sem valores nulos
+        df_clean = df_clean[(df_clean >= 0).all(axis=1)] # Sem valores negativos
+        z_scores = df_clean.apply(zscore)
+        outliers = (z_scores.abs() > 2.5)
+        df_clean = df_clean[~outliers.any(axis=1)] # Sem outliers
 
 
         self.y_label = y_label
@@ -57,11 +61,10 @@ class MRLM:
         self.bic = self.modelo.bic
 
     def html_display(self, data):
-        if not (isinstance(data, pd.DataFrame) or isinstance(data, dict)):
-            raise AssertionError(f"O input deve ser um DataFrame ou um dicionário. O tipo do input é {type(data)}")
-
         if isinstance(data, dict):
             data = pd.DataFrame(data)
+        elif isinstance(data, pd.Series):
+            data = data.to_frame(name=data.name if data.name else "valor")
 
         display(
             HTML(
@@ -293,7 +296,7 @@ class MRLM:
         tot_combinacoes = len(todas_combinacoes)
         for i, combinacao in enumerate(todas_combinacoes):
             if i % 300 == 0:
-                print(f"\r{i} / {tot_combinacoes} considerando {criterio_str}", end="     ")
+                print(f"\r{i} / {tot_combinacoes} considerando {criterio_str.upper()}", end="     ")
             X = self.original_X[list(combinacao)]
             novo_modelo = MRLM(X, self.original_y, X.columns.to_list(), self.original_y.name)
 
@@ -306,7 +309,7 @@ class MRLM:
             if criterio:
                 vars_ = update_vars_(vars_, novo_modelo)
 
-        print(f"\r{i} / {tot_combinacoes} considerando {criterio_str}")
+        print(f"\r{i+1} / {tot_combinacoes} considerando {criterio_str.upper()}")
         if print_relatorio:
             pprint(vars_)
 
@@ -322,3 +325,83 @@ class MRLM:
                 print(relat)
 
         return vars_["melhor"]
+    
+    def previsao_para_media_y(self, n_previsoes=2, alpha=.05):
+        y_medio = self.y.mean()
+        distancias = np.abs(self.y - y_medio)
+        mais_proximos = distancias.nsmallest(n_previsoes).index
+
+        y_esperados = self.y.loc[mais_proximos]
+        x_utilizados = self.X.loc[mais_proximos]
+        print(x_utilizados.shape)
+        x_utilizados_const = sm.add_constant(x_utilizados, has_constant='add')
+        print(x_utilizados_const.shape)
+
+        pred_summary = self.modelo.get_prediction(x_utilizados_const).summary_frame(alpha=alpha)
+
+        df_conf = pred_summary[["mean_ci_lower", "mean", "mean_ci_upper"]].rename(
+            columns={
+                "mean_ci_lower": "IC_inferior",
+                "mean": "Y_predito",
+                "mean_ci_upper": "IC_superior"
+            }
+        )
+
+        df_pred = pred_summary[["obs_ci_lower", "mean", "obs_ci_upper"]].rename(
+            columns={
+                "obs_ci_lower": "IP_inferior",
+                "mean": "Y_predito",
+                "obs_ci_upper": "IP_superior"
+            }
+        )
+
+        print(f"Média de Y: {y_medio}")
+
+        print("\nX utilizados")
+        self.html_display(x_utilizados_const)
+
+        print("\nY esperados (reais)")
+        self.html_display(y_esperados)
+
+        print("\nPrevisão pontual + Intervalo de Confiança")
+        self.html_display(df_conf)
+
+        print("\nPrevisão pontual + Intervalo de Predição")
+        self.html_display(df_pred)
+
+    def previsao_para_n_observacoes_aleatorias(self, n=2, alpha=0.05):
+        amostra_idx = self.X.sample(n, random_state=None).index  
+
+        y_esperados = self.y.loc[amostra_idx]
+        x_utilizados = self.X.loc[amostra_idx]
+        x_utilizados_const = sm.add_constant(x_utilizados)
+
+        pred_summary = self.modelo.get_prediction(x_utilizados_const).summary_frame(alpha=alpha)
+
+        df_conf = pred_summary[["mean_ci_lower", "mean", "mean_ci_upper"]].rename(
+            columns={
+                "mean_ci_lower": "IC_inferior",
+                "mean": "Y_predito",
+                "mean_ci_upper": "IC_superior"
+            }
+        )
+
+        df_pred = pred_summary[["obs_ci_lower", "mean", "obs_ci_upper"]].rename(
+            columns={
+                "obs_ci_lower": "IP_inferior",
+                "mean": "Y_predito",
+                "obs_ci_upper": "IP_superior"
+            }
+        )
+
+        print("\nX utilizados (2 observações aleatórias)")
+        self.html_display(x_utilizados_const)
+
+        print("\nY esperados (reais)")
+        self.html_display(y_esperados)
+
+        print("\nPrevisão pontual + Intervalo de Confiança")
+        self.html_display(df_conf)
+
+        print("\nPrevisão pontual + Intervalo de Predição")
+        self.html_display(df_pred)
